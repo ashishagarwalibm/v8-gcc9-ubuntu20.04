@@ -1,0 +1,68 @@
+FROM ubuntu:20.04
+
+WORKDIR /home
+
+# pre reqs
+RUN apt update && \
+    apt install -y python \
+    python3-pip \
+    curl \
+    pkg-config \
+    libnss*-dev \
+    libcups*-dev \
+    git \
+    vim \
+    libglib*-dev \
+    libpango*-dev \
+    libgconf*-dev \
+    libgnome*-dev \
+    libatk*-dev \
+    libgtk*-dev \
+    wget \
+    clang \
+    g++-9 \
+    gcc-9 \
+    ninja-build \
+    cmake
+
+# gclient dependencies
+RUN pip3 install httplib2
+RUN pip3 install six
+
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 0
+RUN update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 0
+
+RUN if [ $(uname -m) == "s390x" ] ; then \
+      apt-get install -y gcc-9-multilib g++-9-multilib ;\
+    fi
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata
+RUN ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime
+RUN dpkg-reconfigure --frontend noninteractive tzdata
+
+# clone depot_tools and set path
+RUN git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+
+# build gn and run tests
+RUN git clone https://gn.googlesource.com/gn && \
+    cd gn && \
+    python build/gen.py && \
+    ninja -C out && \
+    out/gn_unittests && \
+    cp /home/gn/out/gn /bin/gn && \
+    chmod +x /bin/gn
+
+# set env vars and args
+ENV PATH=$PATH:/home/depot_tools/
+ENV VPYTHON_BYPASS="manually managed python not supported by chrome operations"
+ENV V8_BRANCH="main"
+ENV MODE="release"
+
+COPY ./bin/ /home
+COPY ./patches/ /home/patches
+
+# setup git config
+COPY ./config/gitconfig /root/.gitconfig
+
+# setup vim config
+RUN git clone https://github.com/john-yan/vimrc.git ~/.vim_runtime && bash ~/.vim_runtime/install_awesome_vimrc.sh
+
